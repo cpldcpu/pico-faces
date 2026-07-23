@@ -1,7 +1,7 @@
 # pico-faces
 
 Latent rectified-flow face generators running **entirely on a Raspberry Pi
-Pico 2** (RP2350, $5 microcontroller). No PC in the loop: a PRNG seeds the
+Pico 2** (RP2350, $1 microcontroller). No PC in the loop: a PRNG seeds the
 latent noise, a fully-int8 diffusion transformer integrates the flow ODE in
 8 Euler steps on the two Cortex-M33 cores, and an int8 VAE decoder expands
 the result to a 128×128 RGB face — streamed over USB or shown live on VGA.
