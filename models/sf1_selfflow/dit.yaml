@@ -1,0 +1,46 @@
+# sf1_selfflow — Stage 1 of the Self-Flow bake-off (doc/self_flow_plan.md):
+# full Self-Flow (arXiv 2603.06507). Dual-timestep noising PLUS the
+# self-supervised representation loss: an EMA teacher sees the input noised
+# uniformly at min(t, s); the student must match the teacher's block-6
+# features from its mixed-noise view through a train-only projection head
+# (cosine, gamma 0.8). Class dropout runs in the loop so teacher and
+# student see identical labels. Twin of sf0_base.
+latents: artifacts/m3_long_cfg/runs/vae/latents.npz
+vae_ckpt: checkpoints/m3_long_cfg/vae_final.pt
+n_val: 2000
+latent_ch: 8
+latent_hw: 16
+
+n_classes: 4
+class_dropout: 0.1
+
+arch: dit
+act: relu2
+
+self_flow:
+  gamma: 0.8
+  mask_ratio: 0.25
+  l_student: 2     # capture after block 2 (0-based) ~ 0.3 * depth
+  l_teacher: 6     # teacher features after block 6   ~ 0.7 * depth (l_s < l_t)
+
+dit:
+  dim: 128
+  depth: 8
+  heads: 4
+  patch: 2
+  mlp_ratio: 4
+
+t_embed_dim: 256
+t_sampling: logit_normal
+loss: mse
+
+lr: 2.0e-4
+warmup: 2000
+batch_size: 256
+steps: 80000
+ema: 0.9995
+log_every: 500
+eval_every: 5000
+
+out_dir: artifacts/sf1_selfflow/runs/dit
+seed: 0

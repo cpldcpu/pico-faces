@@ -69,8 +69,11 @@ class DiTBlock(nn.Module):
         nn.init.zeros_(self.mod[1].weight)
         nn.init.zeros_(self.mod[1].bias)
 
-    def forward(self, x, c):  # c: (B, dim)
-        s1, b1, g1, s2, b2, g2 = self.mod(c)[:, None].chunk(6, dim=-1)
+    def forward(self, x, c):  # c: (B, dim) or (B, N, dim) per-token (dual-t)
+        m = self.mod(c)
+        if m.dim() == 2:
+            m = m[:, None]
+        s1, b1, g1, s2, b2, g2 = m.chunk(6, dim=-1)
         x = x + g1 * self.attn(self.norm1(x) * (1 + s1) + b1)
         x = x + g2 * self.mlp(self.norm2(x) * (1 + s2) + b2)
         return x
@@ -119,9 +122,13 @@ class DiT(nn.Module):
         x = x.view(B, g, g, C, p, p).permute(0, 3, 1, 4, 2, 5)
         return x.reshape(B, C, g * p, g * p)
 
-    def forward(self, z, t, y=None):
+    def forward(self, z, t, y=None, return_feats=None):
+        """t: (B,) scalar per sample (inference/export path, unchanged), or
+        (B, N) per-token timesteps (dual-timestep training only). return_feats:
+        optional list of block indices -> also return {idx: hidden} captured
+        AFTER those blocks (Self-Flow training only)."""
         x = self.embed(self.patchify(z)) + self.pos
-        c = self.t_mlp(timestep_embedding(t, self.t_dim))
+        c = self.t_mlp(timestep_embedding(t, self.t_dim))  # (B,dim) or (B,N,dim)
         if self.n_classes:
             if y is None:  # null class = unconditional
                 y = torch.full((z.shape[0],), self.n_classes,
@@ -129,12 +136,20 @@ class DiT(nn.Module):
             if self.training and self.class_dropout > 0:
                 drop = torch.rand(y.shape, device=y.device) < self.class_dropout
                 y = torch.where(drop, torch.full_like(y, self.n_classes), y)
-            c = c + self.y_emb(y)
-        for blk in self.blocks:
+            ye = self.y_emb(y)
+            c = c + (ye[:, None] if c.dim() == 3 else ye)
+        feats = {}
+        for i, blk in enumerate(self.blocks):
             x = blk(x, c)
-        s, b = self.final_mod(c)[:, None].chunk(2, dim=-1)
+            if return_feats is not None and i in return_feats:
+                feats[i] = x
+        m = self.final_mod(c)
+        if m.dim() == 2:
+            m = m[:, None]
+        s, b = m.chunk(2, dim=-1)
         x = self.final(self.final_norm(x) * (1 + s) + b)
-        return self.unpatchify(x)
+        out = self.unpatchify(x)
+        return (out, feats) if return_feats is not None else out
 
 
 # ---------------------------------------------------------------- U-Net variant

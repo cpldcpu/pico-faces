@@ -1,12 +1,24 @@
-"""Rectified-flow training for the DiT / U-Net bake-off.
+"""Rectified-flow training for the DiT (and the U-Net bake-off variant).
 
 All latents stay resident on the GPU; each step samples indices, noises them,
 and regresses v = eps - x0 with MSE. t ~ logit-normal(0,1) (SD3 recipe).
 
+Optional Self-Flow training (arXiv 2603.06507, see doc/self_flow_plan.md),
+enabled by dit.yaml keys — the default path is byte-identical to before:
+  dual_timestep: true    # Dual-Timestep Scheduling: sample a second timestep
+  mask_ratio: 0.25       # s and noise a random token subset at it (per-token
+                         # adaLN conditioning; flow loss target unchanged)
+  self_flow:             # implies dual_timestep; adds the representation loss:
+    gamma: 0.8           # an EMA teacher sees the input noised at min(t,s)
+    mask_ratio: 0.25     # everywhere; the student must reconstruct the
+    l_student: 2         # teacher's block-l_teacher features from its mixed
+    l_teacher: 6         # view, via a train-only projection head (cosine loss).
+                         # Class dropout moves into the loop so teacher and
+                         # student see identical labels.
+
 Run from repo root (WSL):
-  python train/dit/train_dit.py --model m1_gray              # full run per config
-  python train/dit/train_dit.py --model m1_gray --arch unet --act relu2 \
-         --steps 80000 --out artifacts/m1_gray/runs/bake_unet_relu2  # bake-off
+  python train/dit/train_dit.py --model m3_long_cfg          # full run per config
+  python train/dit/train_dit.py --model sf1_selfflow         # Self-Flow bake-off
 """
 import argparse
 import math
@@ -16,6 +28,7 @@ import time
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 
@@ -86,6 +99,7 @@ def main():
     print(f"{cfg['arch']}/{cfg['act']}: total "
           f"{sum(p.numel() for p in model.parameters())/1e6:.2f}M  "
           f"device {device_params(model)/1e6:.2f}M", flush=True)
+
     if args.resume:
         rck = torch.load(rfpaths.resolve(args.resume), map_location=dev,
                          weights_only=False)
@@ -93,6 +107,34 @@ def main():
         model.load_state_dict(clean)
         print(f"resumed model from {args.resume} (step {rck.get('step')}, "
               f"val_loss {rck.get('val_loss')})", flush=True)
+
+    # --- Self-Flow / Dual-Timestep setup (default off; see module docstring)
+    sf = cfg.get("self_flow")
+    dual = bool(cfg.get("dual_timestep")) or sf is not None
+    mask_ratio = float((sf or cfg).get("mask_ratio", 0.25))
+    gside = cfg.get("latent_hw", 16) // cfg["dit"]["patch"]  # token grid (8)
+    teacher = sf_head = None
+    drop_p = 0.0
+    if sf is not None:
+        assert cfg["arch"] == "dit", "self_flow is DiT-only"
+        l_s, l_t = int(sf["l_student"]), int(sf["l_teacher"])
+        assert l_s < l_t < cfg["dit"]["depth"]
+        sf_gamma = float(sf.get("gamma", 0.8))
+        # class dropout moves into the loop: teacher and student must see
+        # identical labels, so the model's own dropout is disabled
+        drop_p, model.class_dropout = model.class_dropout, 0.0
+        teacher = build_model(cfg).to(dev)
+        teacher.load_state_dict(model.state_dict())
+        teacher.requires_grad_(False)
+        teacher.class_dropout = 0.0
+        dim = cfg["dit"]["dim"]
+        sf_head = nn.Sequential(nn.Linear(dim, dim), nn.SiLU(),
+                                nn.Linear(dim, dim)).to(dev)
+        print(f"self_flow: gamma {sf_gamma}  mask {mask_ratio}  "
+              f"layers {l_s}->{l_t} (teacher)", flush=True)
+    elif dual:
+        print(f"dual_timestep: mask {mask_ratio}", flush=True)
+
     if args.compile:
         model = torch.compile(model)
     ema = EMA(model, cfg["ema"])
@@ -104,7 +146,10 @@ def main():
 
     vae_decoder = load_vae_decoder(dev, args.model, cfg.get("vae_ckpt"))
 
-    opt = torch.optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=0.0)
+    params = list(model.parameters())
+    if sf_head is not None:  # projection head trains too (never exported)
+        params += list(sf_head.parameters())
+    opt = torch.optim.AdamW(params, lr=cfg["lr"], weight_decay=0.0)
     steps, bs = cfg["steps"], cfg["batch_size"]
 
     # fixed eval data: deterministic val (eps, t) pairs and grid noise
@@ -155,7 +200,7 @@ def main():
         return cfg["lr"] * (cd_floor + (1.0 - cd_floor) * cos)
 
     t0 = time.time()
-    run_loss = 0.0
+    run_loss = run_rep = 0.0
     for step in range(1, steps + 1):
         lr = lr_at(step)
         for gparam in opt.param_groups:
@@ -165,33 +210,75 @@ def main():
         x0 = train[idx].float()
         eps = torch.randn_like(x0)
         t = torch.sigmoid(torch.randn(bs, device=dev))
-        zt = (1 - t[:, None, None, None]) * x0 + t[:, None, None, None] * eps
+        y = y_train[idx] if y_train is not None else None
+
+        if dual:
+            # Dual-Timestep Scheduling: tokens in a random subset are noised
+            # at a second timestep s; each token conditions on its own tau.
+            # The flow target stays v = eps - x0 per token.
+            s = torch.sigmoid(torch.randn(bs, device=dev))
+            msk = torch.rand(bs, gside * gside, device=dev) < mask_ratio
+            tau = torch.where(msk, s[:, None], t[:, None])       # (B, N)
+            gmap = tau.view(bs, gside, gside)                     # token grid
+            gmap = gmap.repeat_interleave(2, 1).repeat_interleave(2, 2)[:, None]
+            zt = (1 - gmap) * x0 + gmap * eps
+        else:
+            zt = (1 - t[:, None, None, None]) * x0 + t[:, None, None, None] * eps
 
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            v = (model(zt, t, y_train[idx]) if y_train is not None
-                 else model(zt, t))
-            loss = F.mse_loss(v.float(), (eps - x0))
+            if sf is not None:
+                if drop_p > 0 and y is not None:  # loop-side class dropout,
+                    dm = torch.rand(bs, device=dev) < drop_p  # shared t/s
+                    y = torch.where(dm, torch.full_like(y, cfg["n_classes"]), y)
+                v, feats = model(zt, tau, y, return_feats=[l_s])
+                loss_gen = F.mse_loss(v.float(), (eps - x0))
+                with torch.no_grad():  # teacher sees the CLEANER uniform view
+                    tmin = torch.minimum(t, s)
+                    z_min = ((1 - tmin[:, None, None, None]) * x0
+                             + tmin[:, None, None, None] * eps)
+                    _, tfeats = teacher(z_min, tmin, y, return_feats=[l_t])
+                proj = sf_head(feats[l_s])
+                loss_rep = -F.cosine_similarity(
+                    proj.float(), tfeats[l_t].float(), dim=-1).mean()
+                loss = loss_gen + sf_gamma * loss_rep
+                run_rep += loss_rep.item()
+            else:
+                v = model(zt, tau if dual else t, y) if y is not None \
+                    else model(zt, tau if dual else t)
+                loss = F.mse_loss(v.float(), (eps - x0))
 
         opt.zero_grad(set_to_none=True)
         loss.backward()
         opt.step()
         ema.update(model)
-        run_loss += loss.item()
+        if teacher is not None:  # live EMA teacher, same decay as the eval EMA
+            with torch.no_grad():
+                for pt, ps in zip(teacher.parameters(), model.parameters()):
+                    pt.mul_(cfg["ema"]).add_(ps, alpha=1 - cfg["ema"])
+        # run_loss tracks the FLOW loss only, so it stays comparable across
+        # baseline / dual-t / self-flow twins
+        run_loss += (loss_gen if sf is not None else loss).item()
 
         if step % cfg["log_every"] == 0:
             ips = step * bs / (time.time() - t0)
-            print(f"step {step:6d}  loss {run_loss/cfg['log_every']:.5f}  {ips:.0f} img/s",
-                  flush=True)
-            run_loss = 0.0
+            rep = (f"  rep {run_rep/cfg['log_every']:+.4f}"
+                   if sf is not None else "")
+            print(f"step {step:6d}  loss {run_loss/cfg['log_every']:.5f}{rep}"
+                  f"  {ips:.0f} img/s", flush=True)
+            run_loss = run_rep = 0.0
         if step % cfg["eval_every"] == 0 or step == steps:
             vloss = evaluate(step)
-            torch.save({"model": model.state_dict(), "ema": ema.state_dict(),
-                        "cfg": cfg, "step": step, "val_loss": vloss},
-                       os.path.join(out_dir, "ckpt_last.pt"))
+            ck = {"model": model.state_dict(), "ema": ema.state_dict(),
+                  "cfg": cfg, "step": step, "val_loss": vloss}
+            if sf_head is not None:  # train-only; downstream tools ignore it
+                ck["sf_head"] = sf_head.state_dict()
+            torch.save(ck, os.path.join(out_dir, "ckpt_last.pt"))
 
-    torch.save({"model": model.state_dict(), "ema": ema.state_dict(),
-                "cfg": cfg, "step": steps, "val_loss": vloss},
-               os.path.join(out_dir, "ckpt_final.pt"))
+    ck = {"model": model.state_dict(), "ema": ema.state_dict(),
+          "cfg": cfg, "step": steps, "val_loss": vloss}
+    if sf_head is not None:
+        ck["sf_head"] = sf_head.state_dict()
+    torch.save(ck, os.path.join(out_dir, "ckpt_final.pt"))
     print(f"done in {(time.time()-t0)/60:.1f} min", flush=True)
 
 

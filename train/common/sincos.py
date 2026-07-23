@@ -22,10 +22,14 @@ def sincos_2d(dim, h, w):
 
 
 def timestep_embedding(t, dim, max_period=10000):
-    """Sinusoidal timestep embedding. t: (B,) float in [0,1] -> (B, dim)."""
+    """Sinusoidal timestep embedding. t: (...,) float in [0,1] -> (..., dim).
+
+    Accepts any leading shape: (B,) for the standard scalar-per-sample path,
+    (B, N) for per-token timesteps (dual-timestep training).
+    """
     half = dim // 2
     freqs = torch.exp(
         -np.log(max_period) * torch.arange(half, dtype=torch.float32, device=t.device) / half
     )
-    args = t.float()[:, None] * freqs[None] * 1000.0  # scale t to ~[0,1000] like DDPM
+    args = t.float()[..., None] * freqs * 1000.0  # scale t to ~[0,1000] like DDPM
     return torch.cat([torch.cos(args), torch.sin(args)], dim=-1)

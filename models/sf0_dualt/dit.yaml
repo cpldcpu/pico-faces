@@ -1,0 +1,42 @@
+# sf0_dualt — Stage 0 of the Self-Flow bake-off (doc/self_flow_plan.md):
+# Dual-Timestep Scheduling ONLY (no teacher, no representation loss). A
+# random 25% of tokens is noised at a second timestep s; each token
+# conditions on its own tau via per-token adaLN. The paper (arXiv
+# 2603.06507, Fig. 2b) shows this alone improves generation. Twin of
+# sf0_base — only the two keys below differ.
+latents: artifacts/m3_long_cfg/runs/vae/latents.npz
+vae_ckpt: checkpoints/m3_long_cfg/vae_final.pt
+n_val: 2000
+latent_ch: 8
+latent_hw: 16
+
+n_classes: 4
+class_dropout: 0.1
+
+arch: dit
+act: relu2
+
+dual_timestep: true
+mask_ratio: 0.25
+
+dit:
+  dim: 128
+  depth: 8
+  heads: 4
+  patch: 2
+  mlp_ratio: 4
+
+t_embed_dim: 256
+t_sampling: logit_normal
+loss: mse
+
+lr: 2.0e-4
+warmup: 2000
+batch_size: 256
+steps: 80000
+ema: 0.9995
+log_every: 500
+eval_every: 5000
+
+out_dir: artifacts/sf0_dualt/runs/dit
+seed: 0
