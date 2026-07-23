@@ -1,0 +1,43 @@
+# m3_long_cfg DiT (the fast model's backbone, dev name "m3_long"):
+# conditional DiT on the f8 color latent (16x16x8, 2x2 patches ->
+# 64 tokens x 32 feat), ~109 MMAC/step. Classes: gender x smile
+# (0 f/no, 1 f/smile, 2 m/no, 3 m/smile; 4 = null).
+# Only needed for a full RETRAIN (path B); the released checkpoint is
+# checkpoints/m3_long_cfg/dit_qat.pt.
+latents: artifacts/m3_long_cfg/runs/vae/latents.npz
+n_val: 2000
+latent_ch: 8
+latent_hw: 16
+
+n_classes: 4
+class_dropout: 0.1
+
+arch: dit
+act: relu2
+
+dit:
+  dim: 128
+  depth: 8
+  heads: 4
+  patch: 2
+  mlp_ratio: 4
+
+unet:
+  channels: [32, 64, 88]
+  blocks_per_stage: 2
+  attn_res: [8, 4]
+
+t_embed_dim: 256
+t_sampling: logit_normal
+loss: mse
+
+lr: 2.0e-4
+warmup: 2000
+batch_size: 256
+steps: 300000   # full run (smoke was 80k), matches m1's shipped training length
+ema: 0.9995
+log_every: 500
+eval_every: 5000
+
+out_dir: artifacts/m3_long_cfg/runs/dit
+seed: 0

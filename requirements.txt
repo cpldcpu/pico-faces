@@ -1,0 +1,9 @@
+# torch/torchvision come from the WSL conda base env (2.9.0-dev+cu129, Blackwell-capable)
+numpy
+pillow
+tqdm
+pyyaml
+datasets        # FFHQ download from HF hub
+lpips           # VAE perceptual loss
+pyserial        # viewer
+matplotlib      # viewer/sample grids

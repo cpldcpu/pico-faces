@@ -1,0 +1,51 @@
+# m3_decD_deep_full — the QUALITY flagship: full-attention deep DiT (dim128 x
+# depth12) + decoder D on the v8 blob format. v8's scalar-shift renorm
+# (fold.renorm_Ms: ONE requant shift per step-table entry, -119KB) + dead
+# M_v_c/M_v_n deletion (-7.7KB) is what makes full attention fit 4MB flash
+# with ~100KB margin (the v7 format overflowed by 18,360 B).
+#
+# Why full attention matters: dropping the block-10 attention branch (an
+# earlier slim variant) structurally damages the PLAIN/low-w mode — the
+# class-3 smile collapses; guidance masks it, which is why a w=4-guided FID
+# metric had called the drop "free".
+#
+# checkpoints/m3_decD_deep_full/dit_qat.pt is the LONG distillation-QAT
+# checkpoint (45k steps, 2026-07-17). The recipe that produced it:
+#   15k flat-LR self-distillation, then +30k continuation with cosine LR
+#   decay to 0.1x, teacher PINNED to the base fp checkpoint (dit_fp.pt —
+#   never the student; distill-of-distill compounds), and 50% of every batch
+#   drawn from a 16384-state pool of fp teacher TRAJECTORY states (512 seeds
+#   x w in {plain,4,6,8} x K=8 Euler) — the z-distribution the deployed
+#   sampler actually visits (same insight as the union calibration).
+#   quant/qat.py --model m3_decD_deep_full --distill --cosine \
+#     --traj-pool 512 --teacher-ckpt checkpoints/m3_decD_deep_full/dit_fp.pt
+# Result: device gen-FID 53.81 (N=5000, K=8 w=4) — beats its own PTQ (55.33)
+# and approaches fp (52.44); pixel delta to fp 1.6-3 gray levels at plain.
+#
+# FROZEN-CALIB RULE: the QAT checkpoint is folded with the SAME calib it
+# trained against (calib_cfg.npz). Never recalibrate after QAT.
+#
+# Reference outputs (checkpoints/m3_decD_deep_full/): model.bin, rf_cfg.h,
+# goldens/. Re-folding (scripts/finalize.sh m3_decD_deep_full) must
+# reproduce model.bin byte-exactly; golden CRC 40c5e5a0 (seed 1: K=4,
+# class 1, w=4).
+checkpoint: checkpoints/m3_decD_deep_full/dit_qat.pt
+vae_checkpoint: checkpoints/m3_decD_deep_full/vae_final.pt
+calib: checkpoints/m3_decD_deep_full/calib_cfg.npz
+
+schedule: [1.0, 0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125]
+cfg_w: [4, 6, 8]
+
+qat_steps: 15000
+qat_lr: 1.0e-5
+
+weight_bits: 8
+act_bits: 8
+residual_bits: 16
+res_fine_bits: 4
+calib_trajectories: 512
+calib_percentile: 99.9
+
+out: artifacts/m3_decD_deep_full/export/model.bin
+goldens: artifacts/m3_decD_deep_full/goldens/e2e_trained
+golden_seeds: [1, 2, 3]

@@ -1,0 +1,35 @@
+# m3_long_cfg — the FAST build: m3_long DiT (dim128 x depth8) + small VAE
+# decoder + classifier-free guidance (blob format v4). Guided sampling at
+# runtime-selectable w in {4, 6, 8} ("G seed k class w"; w absent on a class
+# request = plain). Guided K=4 costs the same wall-clock as plain K=8 while
+# looking cleaner.
+#
+# Calibration = UNION of the frozen QAT base calib and guided (w=8)
+# trajectories: guided activations run hotter, so scales are the per-key
+# max. This intentionally deviates from the pure frozen-calib rule — the
+# headroom-QAT experiment showed the QAT weights tolerate deploy-scale
+# inflation of this magnitude; the visual gate is the arbiter. The shipped
+# calib_cfg.npz was produced by:
+#   calibrate.py --model m3_long_cfg --guidance-w 8 \
+#     --union checkpoints/m3_long_cfg/calib_base.npz
+#
+# Reference outputs (checkpoints/m3_long_cfg/): model.bin, rf_cfg.h,
+# goldens/. Re-folding (scripts/finalize.sh m3_long_cfg) must reproduce
+# model.bin byte-exactly; golden CRC b32e6e63 (seed 1: K=4, class 1, w=4).
+checkpoint: checkpoints/m3_long_cfg/dit_qat.pt
+vae_checkpoint: checkpoints/m3_long_cfg/vae_final.pt
+calib: checkpoints/m3_long_cfg/calib_cfg.npz
+
+schedule: [1.0, 0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125]
+cfg_w: [4, 6, 8]
+
+weight_bits: 8
+act_bits: 8
+residual_bits: 16
+res_fine_bits: 3   # int16 residual resolution (see the QAT/residual ablation)
+calib_trajectories: 512
+calib_percentile: 99.9
+
+out: artifacts/m3_long_cfg/export/model.bin
+goldens: artifacts/m3_long_cfg/goldens/e2e_trained
+golden_seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]

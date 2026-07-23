@@ -1,0 +1,42 @@
+# Decoder "D" for the flagship: FROZEN m3_long_cfg encoder + latent space
+# (enc_channels/latent must match m3_long_cfg EXACTLY so a DiT trained on
+# those latents drops onto this decoder unchanged); only the decoder is
+# (re)trained, bigger. Path B command:
+#   train/vae/train_decoder.py --model m3_decD_deep_full \
+#     --enc-ckpt checkpoints/m3_long_cfg/vae_final.pt
+#
+# Decoder "D" (arena-safe): all 128^2 feature maps stay 8ch, so the widest map
+# is 128*128*8 = 128KB = exactly one rf_arena half -- the engine's ping-pong
+# fits with zero changes. Capacity is spent at <=64px resolution (cheap pixels)
+# plus one extra 128px conv: ~493K params, ~440 MMAC (4.3x the current 115K
+# decoder, ~4x compute, ~+0.3s device runtime). 13 conv layers -> needs
+# RF_MAX_DEC >= 13 (bumped to 16 in export.py + rf_model.h).
+#
+# Widening the 128^2 tail past 8ch (12ch=192KB, 16ch=256KB) OVERFLOWS the arena
+# half -- that path is off the table without row-streamed 128^2 conv surgery.
+data: data/ffhq_rgb_128.npy
+latents_data: data/ffhq_rgb_128.npy
+labels: data/ffhq_gs_labels.npy
+n_val: 800
+img_ch: 3
+
+latent_hw: 16
+latent_ch: 8
+
+enc_channels: [64, 128, 256, 384]    # MUST match m3_long (frozen encoder)
+dec_channels: [64, 32, 16, 8]        # informational; dec_plan is authoritative
+
+# D: fat <=64px stages + extra 128px conv, 8ch tail (arena-safe, ~493K params)
+dec_plan: [[128, 0], [128, 0], [128, 0], [64, 1], [64, 0], [64, 0], [32, 1], [32, 0], [32, 0], [8, 1], [8, 0], [8, 0]]
+
+kl_weight: 1.0e-6
+lpips_weight: 0.2
+lr: 1.0e-4
+batch_size: 128
+steps: 30000    # same length as m3_long VAE for a like-for-like comparison
+warmup: 500
+log_every: 200
+eval_every: 1000
+
+out_dir: artifacts/m3_decD_deep_full/runs/vae
+seed: 0

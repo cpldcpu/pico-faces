@@ -1,0 +1,8 @@
+* text=auto eol=lf
+*.png binary
+*.npz binary
+*.bin binary
+*.pt binary
+*.uf2 binary
+*.rgb binary
+*.gray binary

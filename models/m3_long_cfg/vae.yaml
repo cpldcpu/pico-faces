@@ -1,0 +1,30 @@
+# m3_long_cfg VAE: big frozen-at-export encoder + the small (~116K-param)
+# deployable decoder. fold.py reads the VAE arch from this file and the
+# latent mean/std from <out_dir>/latents.npz — for re-folding without a
+# retrain, scripts/finalize.sh stages checkpoints/m3_long_cfg/
+# latent_stats.npz there first. Training (path B) regenerates everything.
+data: data/ffhq_rgb_128.npy
+latents_data: data/ffhq_rgb_128.npy
+labels: data/ffhq_gs_labels.npy      # gender x smile, 4 = no-face -> null
+n_val: 800
+img_ch: 3
+
+latent_hw: 16
+latent_ch: 8
+
+enc_channels: [64, 128, 256, 384]    # stages at 128/64/32/16 px (m1 shape)
+dec_channels: [64, 32, 16, 8]        # informational; dec_plan is authoritative
+# m1's 9-conv layout from 16x16, z_ch=8 in, RGB out (~107 MMAC, arena-safe)
+dec_plan: [[64, 0], [64, 0], [64, 0], [32, 1], [32, 0], [16, 1], [16, 0], [8, 1], [8, 0]]
+
+kl_weight: 1.0e-6
+lpips_weight: 0.2
+lr: 1.0e-4
+batch_size: 128
+steps: 30000
+warmup: 500
+log_every: 200
+eval_every: 1000
+
+out_dir: artifacts/m3_long_cfg/runs/vae
+seed: 0

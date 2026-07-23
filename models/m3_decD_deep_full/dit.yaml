@@ -1,0 +1,46 @@
+# The flagship's DiT: depth 12 (vs the fast model's 8), same dim/heads/mlp so
+# the engine's weight-staging arena is unchanged; extra blocks re-stream from
+# flash. Trains on the SHARED latent space (m3_long_cfg's VAE latents) — for
+# a full retrain (path B), train the m3_long_cfg VAE + latents first. The
+# released fp checkpoint from this training is checkpoints/
+# m3_decD_deep_full/dit_fp.pt (500k + 100k cosine cooldown); the shipped
+# device checkpoint is dit_qat.pt (the 45k distillation-QAT on top of it).
+latents: artifacts/m3_long_cfg/runs/vae/latents.npz
+n_val: 2000
+latent_ch: 8
+latent_hw: 16
+
+n_classes: 4
+class_dropout: 0.1
+
+arch: dit
+act: relu2
+
+dit:
+  dim: 128
+  depth: 12
+  heads: 4
+  patch: 2
+  mlp_ratio: 4
+
+unet:
+  channels: [32, 64, 88]
+  blocks_per_stage: 2
+  attn_res: [8, 4]
+
+t_embed_dim: 256
+t_sampling: logit_normal
+loss: mse
+
+lr: 2.0e-4
+warmup: 2000
+batch_size: 256
+steps: 500000
+cooldown_frac: 0.2
+cooldown_floor: 0.05
+ema: 0.9995
+log_every: 500
+eval_every: 5000
+
+out_dir: artifacts/m3_decD_deep_full/runs/dit
+seed: 0
