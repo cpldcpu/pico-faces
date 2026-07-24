@@ -1,0 +1,50 @@
+# sf1_hard — the "just to be sure" aggressive Self-Flow probe. The 80k
+# bake-off (doc/self_flow_plan.md section 0) showed the alignment task
+# saturating instantly (cos 0.96 by 1.5k steps) at paper-default settings;
+# this run cranks every knob toward MAKING THE MECHANISM FIGHT:
+#   mask 0.5    — half the tokens at the second timestep (paper's hardest)
+#   layers 1->6 — near-input student features must predict near-output
+#                 teacher features (largest asymmetry the depth allows)
+#   gamma 1.5   — ~2x the paper's rep pressure
+# Diagnostic to watch: if the rep cosine STILL pins ~0.95+ within ~2k
+# steps, the task is trivially solvable at dim 128 and the negative result
+# stands. Twin of sf0_base otherwise (same seed/latents/schedule).
+latents: artifacts/m3_long_cfg/runs/vae/latents.npz
+vae_ckpt: checkpoints/m3_long_cfg/vae_final.pt
+n_val: 2000
+latent_ch: 8
+latent_hw: 16
+
+n_classes: 4
+class_dropout: 0.1
+
+arch: dit
+act: relu2
+
+self_flow:
+  gamma: 1.5
+  mask_ratio: 0.5
+  l_student: 1
+  l_teacher: 6
+
+dit:
+  dim: 128
+  depth: 8
+  heads: 4
+  patch: 2
+  mlp_ratio: 4
+
+t_embed_dim: 256
+t_sampling: logit_normal
+loss: mse
+
+lr: 2.0e-4
+warmup: 2000
+batch_size: 256
+steps: 80000
+ema: 0.9995
+log_every: 500
+eval_every: 5000
+
+out_dir: artifacts/sf1_hard/runs/dit
+seed: 0
