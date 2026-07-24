@@ -1,0 +1,48 @@
+# sf2_deep — the FULL Self-Flow run (Stage 2 of doc/self_flow_plan.md):
+# the flagship's depth-12 DiT trained from scratch with the Self-Flow
+# objective, on the same schedule as the shipped fp checkpoint (500k +
+# 100k cosine cooldown), same latents/seed. If this beats the released
+# dit_fp.pt on grids/FID, the downstream ladder (calib -> distill-QAT ->
+# fold) runs unchanged on top of it.
+# Layer picks: 0.3/0.7 of depth 12 -> student block 3, teacher block 8.
+latents: artifacts/m3_long_cfg/runs/vae/latents.npz
+vae_ckpt: checkpoints/m3_long_cfg/vae_final.pt
+n_val: 2000
+latent_ch: 8
+latent_hw: 16
+
+n_classes: 4
+class_dropout: 0.1
+
+arch: dit
+act: relu2
+
+self_flow:
+  gamma: 0.8
+  mask_ratio: 0.25
+  l_student: 3
+  l_teacher: 8
+
+dit:
+  dim: 128
+  depth: 12
+  heads: 4
+  patch: 2
+  mlp_ratio: 4
+
+t_embed_dim: 256
+t_sampling: logit_normal
+loss: mse
+
+lr: 2.0e-4
+warmup: 2000
+batch_size: 256
+steps: 500000
+cooldown_frac: 0.2
+cooldown_floor: 0.05
+ema: 0.9995
+log_every: 500
+eval_every: 5000
+
+out_dir: artifacts/sf2_deep/runs/dit
+seed: 0

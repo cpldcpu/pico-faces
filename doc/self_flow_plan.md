@@ -4,13 +4,54 @@ Paper: *Self-Supervised Flow Matching for Scalable Multi-Modal Synthesis*
 (Chefer, Esser et al., Black Forest Labs, arXiv 2603.06507, Mar 2026 —
 local copy: `doc/2603.06507v1.pdf`).
 
-Status: **Stages 0+1 implemented on this branch.** The per-token
-conditioning lives in `train/dit/model.py` / `train/common/sincos.py`, the
-training paths in `train/dit/train_dit.py` (yaml-gated, default path
-byte-identical), and the twin bake-off configs are `models/sf0_base`
-(control), `models/sf0_dualt` (Dual-Timestep only), `models/sf1_selfflow`
-(full Self-Flow) — run via `scripts/sf_bakeoff.sh`. The rest of this
-document is the original assessment and plan with go/no-go gates.
+Status: **Stages 0+1 implemented and RUN on this branch — gate NOT met,
+Stage 2 not launched.** The per-token conditioning lives in
+`train/dit/model.py` / `train/common/sincos.py`, the training paths in
+`train/dit/train_dit.py` (yaml-gated, default path byte-identical), and the
+twin bake-off configs are `models/sf0_base` (control), `models/sf0_dualt`
+(Dual-Timestep only), `models/sf1_selfflow` (full Self-Flow) — run via
+`scripts/sf_bakeoff.sh`. Results below (section 0); the rest of the
+document is the original assessment and plan.
+
+## 0. Bake-off results (2026-07-24, 80k twins, depth-8, seed 0)
+
+| variant | final val v-loss | vs control | fixed-seed grids |
+|---|---|---|---|
+| `sf0_base` | **1.17762** | — | reference |
+| `sf0_dualt` | 1.17824 | +0.0006 (tie) | wash — no systematic difference |
+| `sf1_selfflow` | 1.18332 | +0.0057 (behind) | K=64 near-twins; K=4 slightly NOISIER on several cells |
+
+Sanity check that made the twins meaningful: `sf0_base` reproduced the
+dev repo's historical 80k bake-off val loss to all five decimals
+(1.17762) — the default path really is untouched.
+
+Observations:
+
+- **Dual-Timestep alone is cost-free but not beneficial here.** It lagged
+  the control by ~0.002 through mid-training (learning the heterogeneous
+  task), converged to parity by 60k, and its grids are indistinguishable.
+  The paper's Fig. 2b "slight improvement" did not materialize at 1.6M
+  params / 70k aligned faces.
+- **Full Self-Flow slightly REGRESSES at equal budget.** The −0.006 val
+  gap held stable to the end (unlike dual-t's, it never closed), and the
+  K=4 grids show mildly more texture damage on the harder cells.
+- **The alignment task saturates instantly** — student↔teacher cosine hit
+  0.96 by step 1.5k and stayed flat for the remaining 78k steps. At
+  dim 128 / 64 tokens the projection head aligns shallow-to-deep features
+  trivially, so the information asymmetry never forces new representation
+  structure. In the paper, alignment keeps strengthening for a long time —
+  that dynamic is what pays, and it is absent at this scale. This is the
+  scale-gap risk from section 4 materializing, with a mechanism attached.
+
+**Verdict: the ~400× scale-down kills the effect.** Section 10's negative
+blog chapter is the outcome: a clean data point on where representation
+alignment stops paying. `models/sf2_deep` (the full depth-12 Self-Flow
+config) is committed but was NOT launched. If anyone revisits: the knobs
+most likely to matter are a harder alignment task (mask 0.5, shallower
+student layer), lower γ (0.4), and the shifted p(t) — but the instant
+cosine saturation suggests the mechanism itself has no room to work at
+this width. Evidence: `artifacts/sf_compare_strip.png`, the three
+`artifacts/sf*/runs/dit/grid_080000_k{4,64}.png`, train logs alongside.
 
 ---
 
