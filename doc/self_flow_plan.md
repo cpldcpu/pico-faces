@@ -43,6 +43,15 @@ Observations:
   that dynamic is what pays, and it is absent at this scale. This is the
   scale-gap risk from section 4 materializing, with a mechanism attached.
 
+**Aggressive probe (`sf1_hard`, 2026-07-24, stopped at 15k by design):**
+every knob turned toward making the mechanism fight — mask 0.5, student
+layer 1 → teacher 6 (the largest asymmetry depth 8 allows), γ 1.5. The
+alignment cosine followed the default run's trajectory point-for-point
+(0.56 @ 500, 0.92 @ 1k, 0.96 @ 1.5k, flat after) and the val curve matched
+the default Self-Flow run to ~4 decimals (1.2757 vs 1.2757 @ 15k). The
+task is trivially solvable at dim 128 no matter how it is posed; the run
+was stopped early as conclusive.
+
 **Verdict: the ~400× scale-down kills the effect.** Section 10's negative
 blog chapter is the outcome: a clean data point on where representation
 alignment stops paying. `models/sf2_deep` (the full depth-12 Self-Flow
