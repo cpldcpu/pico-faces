@@ -24,10 +24,13 @@ reproduce the UF2s byte-for-byte without training (`scripts/finalize.sh
   batches; recipe in the model's export.yaml). `dit_fp.pt` = the base fp
   teacher (500k + 100k cosine cooldown) — kept so the QAT stage is
   reproducible without a retrain. Device gen-FID 53.8 (N=5000, K=8 w=4).
-  Golden CRC `40c5e5a0` (seed 1: K=4, class 1, w=4).
+  Golden CRC `40c5e5a0` (seed 1: K=4, class 1, w=4). Folded adaLN step
+  tables inside `model.bin`: **960 KiB** of 3.83 MiB (5 cond × 8 steps ×
+  12 blocks).
 - **`m3_long_cfg/`** (2026-07-12, refolded v4 on the current engine):
   `dit_qat.pt` = 300k rectified-flow + 15k QAT. Golden CRC `b32e6e63`
-  (seed 1: K=4, class 1, w=4).
+  (seed 1: K=4, class 1, w=4). Folded adaLN step tables inside
+  `model.bin`: **720 KiB** of 2.45 MiB (5 cond × 8 steps × 8 blocks).
 
 ## Architecture
 
