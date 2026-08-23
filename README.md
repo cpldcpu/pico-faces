@@ -24,7 +24,7 @@ the microcontroller produce byte-identical images.
 Both are class-conditional (gender × smile: 0 f/neutral, 1 f/smile,
 2 m/neutral, 3 m/smile) with classifier-free guidance, `w ∈ {4, 6, 8}`,
 selectable per request at runtime. The quality model's int8 checkpoint was
-healed with a 45k-step self-distillation QAT — the folded int8 model beats
+healed with a 60k-step self-distillation QAT — the folded int8 model beats
 its own post-training quantization on FID and sits 1.6–3 gray levels from
 the fp teacher per pixel.
 

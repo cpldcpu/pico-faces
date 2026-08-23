@@ -19,8 +19,8 @@ reproduce the UF2s byte-for-byte without training (`scripts/finalize.sh
 
 ## Provenance
 
-- **`m3_decD_deep_full/`** (2026-07-17): `dit_qat.pt` = 45k self-distillation
-  QAT (15k flat-LR + 30k cosine, teacher = `dit_fp.pt`, 50% trajectory-pool
+- **`m3_decD_deep_full/`** (2026-07-17): `dit_qat.pt` = 60k self-distillation
+  QAT (15k flat-LR + 45k cosine, teacher = `dit_fp.pt`, 50% trajectory-pool
   batches; recipe in the model's export.yaml). `dit_fp.pt` = the base fp
   teacher (500k + 100k cosine cooldown) — kept so the QAT stage is
   reproducible without a retrain. Device gen-FID 53.8 (N=5000, K=8 w=4).
@@ -29,7 +29,7 @@ reproduce the UF2s byte-for-byte without training (`scripts/finalize.sh
   `dit_qat.pt` = 300k rectified-flow + 15k QAT. Golden CRC `b32e6e63`
   (seed 1: K=4, class 1, w=4).
 
-## Architecture: where the parameters hide
+## Architecture
 
 Exact counts, generated from these configs/checkpoints. Three things are
 easy to miss: most of the VAE never ships (the big encoder is train-only),

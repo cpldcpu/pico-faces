@@ -10,8 +10,8 @@
 # metric had called the drop "free".
 #
 # checkpoints/m3_decD_deep_full/dit_qat.pt is the LONG distillation-QAT
-# checkpoint (45k steps, 2026-07-17). The recipe that produced it:
-#   15k flat-LR self-distillation, then +30k continuation with cosine LR
+# checkpoint (60k steps total, 2026-07-17). The recipe that produced it:
+#   15k flat-LR self-distillation, then a 45k continuation with cosine LR
 #   decay to 0.1x, teacher PINNED to the base fp checkpoint (dit_fp.pt —
 #   never the student; distill-of-distill compounds), and 50% of every batch
 #   drawn from a 16384-state pool of fp teacher TRAJECTORY states (512 seeds

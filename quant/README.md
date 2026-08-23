@@ -42,5 +42,6 @@ python quant/qat.py --model m3_decD_deep_full --distill --cosine \
 python quant/fold.py --model m3_decD_deep_full
 ```
 
-(15k steps per invocation; the released checkpoint is 15k flat-LR + 30k
-cosine continuation. See the model's export.yaml header for the full story.)
+(15k steps per invocation; the released checkpoint is 15k flat-LR plus a
+45k cosine continuation — 60k total. See the model's export.yaml header
+for the full story.)
