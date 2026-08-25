@@ -18,9 +18,6 @@ tower) is extracted at fold time.
 
 ## Full retrain sequence
 
-Order matters — both models share one latent space (the `m3_long_cfg`
-encoder), so the fast model's VAE comes first:
-
 ```
 # 1. fast model: VAE + latents + DiT (300k)
 bash scripts/train_model.sh m3_long_cfg
@@ -37,7 +34,3 @@ python train/dit/train_dit.py --model m3_decD_deep_full
 Then continue with the int8 stages in [../quant/README.md](../quant/README.md)
 (calibrate → QAT → fold). Rough wall-clock on an RTX 5090: VAE ~1 h, fast
 DiT ~3 h, flagship DiT overnight.
-
-Training is seeded, but CUDA nondeterminism means retrained checkpoints
-won't match the released ones bit-for-bit — after your own QAT+fold, the
-byte-exact contract applies to *your* goldens.
