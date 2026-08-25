@@ -20,7 +20,7 @@ It is more than astonishing that a model this small is able to generate complex 
 
 ### Video of the device generating and displaying an image on a monitor
 
-![media/pico_faces_monitor.mp4](media/pico_faces_monitor.mp4)
+https://github.com/user-attachments/assets/ee88a615-10ba-494f-acf2-f491a732a64f
 
 ### Emergence of facial features as the number of steps increases
 
