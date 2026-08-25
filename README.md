@@ -10,7 +10,7 @@ This project implements a **Gen AI image generator running on a $1 Microcontroll
 
 It can generate 128×128 RGB images of human faces in 10-20s each and display them on a VGA monitor or stream them over USB. The model implements a latent rectified-flow diffusion transformer (DiT), similar to what is used in diffusion models like Flux. There are two variants at 2.9 and 1.7 million parameters, 5000x times less than even a typical local diffusion model. It supports conditional generation in 5 classes (gender × smile). The model was trained on the [FFHQ dataset](https://github.com/nvlabs/ffhq-dataset).
 
-It is more than astonishing that a model this small is able to generate complex images at all. Many MNIST toy diffusion projects use far more parameters and are barely able to generate anything coherent. Interestingly, a lot of the optimizations that helped large models were also neccessary for this micro model. 
+It is more than astonishing that a model this small is able to generate complex images at all. Many MNIST toy diffusion projects use far more parameters and are barely able to generate anything coherent. Interestingly, a lot of the optimizations that helped large models were also necessary for this micro model. 
 
 ### Example outputs for the same seed and different classes
 
@@ -30,9 +30,9 @@ This indicates that the model does indeed behave like a diffusion model. Smaller
    <img src="media/grid_emergence_k8.png" alt="Example" width=50%>
 </div>
 
-### Parameter matrix for number of steps K and guidance strength w (CFG, classifier free guidance)
+### Parameter matrix for number of steps K and guidance strength w 
 
-This demonstrates that the model scales as expected with both parameters.
+This demonstrates that the model scales as expected with number of steps k and classifier free guidance w (CFG).
 
 <div align="center">
    <img src="media/kw_deepD_seed3.png" alt="Example" width=50%>
