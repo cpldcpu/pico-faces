@@ -1,50 +1,71 @@
-# pico-faces
+# Pico-Faces
 
-Latent rectified-flow face generators running **entirely on a Raspberry Pi
-Pico 2** (RP2350, $1 microcontroller). No PC in the loop: a PRNG seeds the
-latent noise, a fully-int8 diffusion transformer integrates the flow ODE in
-8 Euler steps on the two Cortex-M33 cores, and an int8 VAE decoder expands
-the result to a 128×128 RGB face — streamed over USB or shown live on VGA.
+This project implements a **Gen AI image generator running on a $1 Microcontroller**, the RP2350, as used in the Raspberry Pi Pico 2. 
 
-Everything from seed to pixels is **exact integer arithmetic** with one
-specified rounding rule, so the numpy simulator, the desktop C engine, and
-the microcontroller produce byte-identical images.
+**Blog article with more details [here](here)**
 
-## The two released models
+---
 
-| | `m3_decD_deep_full` (quality) | `m3_long_cfg` (fast) |
-|---|---|---|
-| DiT | dim 128 × depth 12, 2.37M params | dim 128 × depth 8, 1.59M params |
-| VAE decoder | "D", ~493K params | small, ~116K params |
-| Blob format | v8 (4.02MB, ~100KB flash margin) | v4 (2.57MB) |
-| Gen-FID (device, N=5000, K=8 w=4) | **53.8** (fp reference: 52.4) | — (speed build) |
-| Time / image | ~10 s @ K=4 w=4 (≈20 s @ K=8 w=8) | ~4.3 s @ K=4 w=4 (5.4 s @ K=8 plain) |
-| Golden CRC (seed 1: K=4, class 1, w=4) | `40c5e5a0` | `b32e6e63` |
+## What does it do?
 
-Both are class-conditional (gender × smile: 0 f/neutral, 1 f/smile,
-2 m/neutral, 3 m/smile) with classifier-free guidance, `w ∈ {4, 6, 8}`,
-selectable per request at runtime. The quality model's int8 checkpoint was
-healed with a 60k-step self-distillation QAT — the folded int8 model beats
-its own post-training quantization on FID and sits 1.6–3 gray levels from
-the fp teacher per pixel.
+It can generate 128×128 RGB images of human faces in 10-20s each and display them on a VGA monitor or stream them over USB. The model implements a latent rectified-flow diffusion transformer (DiT), similar to what is used in diffusion models like Flux. There are two variants at 2.9 and 1.7 million parameters, 5000x times less than even a typical local diffusion model. It supports conditional generation in 5 classes (gender × smile). The model was trained on the [FFHQ dataset](https://github.com/nvlabs/ffhq-dataset).
 
-## Quickstart: flash and generate
+It is more than astonishing that a model this small is able to generate complex images at all. Many MNIST toy diffusion projects use far more parameters and are barely able to generate anything coherent. Interestingly, a lot of the optimizations that helped large models and helped for this micro model. 
 
-1. Hold BOOTSEL while plugging in a Pico 2, copy
+### Example outputs for the same seed and different classes
+
+<div align="center">
+   <img src="media/seed3_classes_k8_w6.png" alt="Example">
+</div>
+
+### Video of the device generating and displaying an image on a monitor
+
+![media/pico_faces_monitor.mp4](media/pico_faces_monitor.mp4)
+
+### Emergence of facial features as the number of steps increases
+
+This indicates that the model does indeed behave like a diffusion model. Smaller diffusion models often tend to collapse to an initial bias without actual refinement in subsequent steps. This is not the case here.
+
+<div align="center">
+   <img src="media/grid_emergence_k8.png" alt="Example" width=50%>
+</div>
+
+### Parameter matrix for number of steps K and guidance strength w (CFG, classifier free guidance)
+
+This demonstrates that the model scales as expected with both parameters.
+
+<div align="center">
+   <img src="media/kw_deepD_seed3.png" alt="Example" width=50%>
+</div>
+
+## Quickstart - run it on your own Pico 2
+
+1. Hold BOOTSEL while resetting the RP2350 board, copy
    [uf2/pico_faces_m3_decD_deep_full.uf2](uf2/) onto the `RPI-RP2` drive.
 2. `pip install pyserial matplotlib numpy pillow`, then:
 
    ```
-   python viewer/view_serial.py --port COM10 --seed 1 --show \
-       --expect checkpoints/m3_decD_deep_full/goldens/golden_1.rgb
+   python viewer/view_serial.py --port com10 --seed 3 --steps 8 --class 4  --cfg 6 --show
    ```
 
-   The viewer requests an image (`G <seed> [k] [class] [w]`), displays it,
-   and byte-compares it against the released golden (CRC `40c5e5a0`) —
-   your board reproduces the release bit-for-bit or not at all.
+Check the [viewer/README.md](viewer/README.md) for the full parameters descriptions.
 
-Optional: on a Pimoroni VGA Demo Base the firmware scans out the image at
-640×480 while generating.
+Optional: on a Pimoroni VGA Demo Base the firmware displays the images on a connected VGA monitor. 
+
+<div align="center">
+   <img src="media/vga-board.jpg" alt="Board" width=40%>
+</div>
+
+### The included models
+
+| | High quality model `m3_decD_deep_full` | Fast model `m3_long_cfg` |
+|---|---|---|
+| DiT | dim 128 × depth 12, 2.37M params | dim 128 × depth 8, 1.59M params |
+| VAE decoder |  ~493K params | small, ~116K params |
+| Blob size | 4.02MB | 2.57MB |
+| Gen-FID (device, N=5000, K=8 w=4) | **53.8** (fp reference: 52.4) | — (speed build) |
+| Time / image | ~10 s @ K=4 w=4 (≈20 s @ K=8 w=8) | ~4.3 s @ K=4 w=4 (5.4 s @ K=8 plain) |
+
 
 ## Recreating the UF2s
 
@@ -65,8 +86,7 @@ and builds the UF2 (needs the [Pico SDK](firmware/README.md)).
 decoder D → latents → DiT → calibration → distillation-QAT → path A. The
 stage-by-stage commands live in [train/README.md](train/README.md) and
 [quant/README.md](quant/README.md); training is seeded but GPU nondeterminism
-means your checkpoints (and CRCs) will differ — the byte-exact contract then
-holds for *your* fold.
+means your checkpoints (and CRCs) will differ.
 
 ## Repository map
 
@@ -82,19 +102,3 @@ holds for *your* fold.
 | [scripts/](scripts/) | the drivers: `finalize.sh`, `verify_model.sh`, `build_firmware.sh`, `train_model.sh` |
 | [viewer/](viewer/) | PC-side serial viewer / golden checker |
 | [uf2/](uf2/) | the two flashable images |
-
-## Determinism contract
-
-`quant/int_sim.py` (numpy) ↔ `engine/desktop` (x86 C) ↔ firmware (M33) must
-produce byte-identical images for the same seed. Every released model ships
-its end-to-end goldens in `checkpoints/<model>/goldens/`;
-`scripts/verify_model.sh` enforces the contract on every re-fold. If you
-change anything in `quant/` or `engine/`, this gate is the arbiter.
-
-## Environment
-
-- Training: Linux/WSL, PyTorch ≥ 2.4 with CUDA (developed on torch
-  2.9/cu129, RTX 5090). Folding/verification: any Python 3.10+ with torch
-  CPU. `requirements.txt` covers the rest.
-- Firmware: Pico SDK 2.2.0, `arm-none-eabi-gcc`, cmake ≥ 3.13
-  ([firmware/README.md](firmware/README.md)).
