@@ -2,7 +2,7 @@
 
 This project implements a **Gen AI image generator running on a $1 Microcontroller**, the RP2350, as used in the Raspberry Pi Pico 2. 
 
-**Blog article with more details [here](https://cpldcpu.github.io/2026/08/28/ai-image-generation-on-a-rp-pico-2-microcontroller/)**
+**Article with more details [here](https://cpldcpu.github.io/2026/08/28/ai-image-generation-on-a-rp-pico-2-microcontroller/)**
 
 ---
 
