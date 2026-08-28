@@ -21,16 +21,14 @@ static int16_t z_tok[RF_TOKENS][RF_PD] RF_ALIGN4;
 /* CFG: pre-step z snapshot -- both guided passes read it while their Euler
  * folds accumulate into z_tok (4 KB, the whole guidance SRAM tax) */
 static int16_t z_prev[RF_TOKENS][RF_PD] RF_ALIGN4;
-/* CLT-12 noise staging (8 KB, generation init only). Non-static: the hires
- * head reuses it as conv scratch -- phase-exclusive, like the fb/arena alias */
-int32_t rf_dit_noise[RF_TOKENS * RF_PD] RF_ALIGN4;
+/* CLT-12 noise staging (8 KB, generation init only) */
+static int32_t rf_dit_noise[RF_TOKENS * RF_PD] RF_ALIGN4;
 static int16_t res[RF_TOKENS][RF_DIM] RF_ALIGN4;
 static int8_t xa[RF_TOKENS][RF_DIM] RF_ALIGN4;
 /* qkv+attn are grouped so the VAE decoder can borrow their combined storage as
  * row-compaction scratch (rf_dec_scratch): both are DiT-step-only and fully
- * idle during rf_decode -- the same phase-exclusive aliasing the hires head
- * uses on rf_dit_noise. Non-static + a stable base symbol let vae_dec.c overlay
- * rowbuf here instead of allocating its own 26 KB of .bss. */
+ * idle during rf_decode. Non-static + a stable base symbol let vae_dec.c
+ * overlay rowbuf here instead of allocating its own 26 KB of .bss. */
 static struct rf_dit_qa {
     int8_t qkv[RF_TOKENS][3 * RF_DIM];
     int8_t attn[RF_TOKENS][RF_DIM];

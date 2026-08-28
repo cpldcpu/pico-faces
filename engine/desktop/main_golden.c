@@ -7,13 +7,6 @@
 #include "rf_model.h"
 #include "rf_ops.h"
 
-#if RF_HIRES
-static void buf_sink(int y, const uint8_t *row, void *user) {
-    memcpy((uint8_t *)user + (size_t)y * RF_OUT_HW * RF_IMG_CH, row,
-           (size_t)RF_OUT_HW * RF_IMG_CH);
-}
-#endif
-
 int main(int argc, char **argv) {
     if (argc < 5) {
         fprintf(stderr, "usage: %s model.bin out_dir k_steps seed...\n",
@@ -41,9 +34,6 @@ int main(int argc, char **argv) {
 
     static uint8_t img[RF_IMG_HW * RF_IMG_HW * RF_IMG_CH];
     static int16_t taps[(RF_K_MAX + 1) * RF_TOKENS * RF_PD];
-#if RF_HIRES
-    static uint8_t img256[RF_OUT_HW * RF_OUT_HW * RF_IMG_CH];
-#endif
     int k_steps = atoi(argv[3]);
     for (int a = 4; a < argc; a++) {
         uint64_t seed = strtoull(argv[a], NULL, 0);
@@ -53,11 +43,6 @@ int main(int argc, char **argv) {
         rf_generate(&m, seed, k_steps, cond, w_idx, img, taps);
         const uint8_t *out = img;
         size_t osz = sizeof img;
-#if RF_HIRES
-        rf_hires(&m, img, buf_sink, img256);
-        out = img256;
-        osz = sizeof img256;
-#endif
         char path[512];
         snprintf(path, sizeof path, "%s/eng_%llu.%s", argv[2],
                  (unsigned long long)seed, RF_IMG_CH == 1 ? "gray" : "rgb");

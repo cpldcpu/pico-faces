@@ -17,7 +17,4 @@
 #define RF_DEC_NZ_MAX 1024
 #define RF_DEC_W_MAX 128
 #define RF_DEC_O_MAX 64
-#define RF_HIRES 0
-#define RF_HIRES_CMID 0
-#define RF_OUT_HW 128
 #endif

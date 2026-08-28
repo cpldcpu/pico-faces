@@ -36,9 +36,9 @@ class-independent because the final-input scale is shared) do not.
 Version 4 inserts the classifier-free-guidance section after M_v/s_v:
   n_w u32, per w { w_q8 u32, K x (M_v_c i32[pd] s_v_c u8[pd]),
       K x (M_v_n i32[pd] s_v_n u8[pd]) }
-Version 5 (hires models) always writes the v4 n_w count (0 when no cfg)
-and appends the hires head after the decoder layers:
-  n_hires u32, per layer { C, O, flags, W i8[O*9*C] dense, b/M i32[O], s u8[O] }
+Version 5+ always writes the v4 n_w count (0 when no cfg) and a trailing
+n_hires u32 after the decoder layers (an experimental 256 head, since
+removed; always 0 now).
 Version 8 (act_sq folds; v7 is a legacy read-only format) shrinks storage:
   step tables carry ONE requant shift per entry (sproj/sfc2 = u8 scalar,
   mantissas pre-aligned by fold.renorm_Ms), and the guidance section is just
@@ -75,7 +75,6 @@ def write_model_bin(md, path):
     pd = int(m["zch"]) * int(m["patch"]) ** 2
     n_cond = int(m.get("n_cond", 1))
     cfg_w = list(m.get("cfg_w", []))
-    hires = md.get("hires")
     # per-block attention mask (bit b set = block b keeps attention). Blocks in
     # md["drop_attn"] have their attention branch omitted (v6).
     drop_attn = set(md.get("drop_attn", ()))
@@ -99,7 +98,7 @@ def write_model_bin(md, path):
     # guidance tables are gone (unused since the int32-difference blend).
     # act_sq folds always emit v8 now; shipped v7 blobs still parse.
     ver = 8 if act_sq else (
-        6 if drop_attn else (5 if hires else (4 if cfg_w else 3)))
+        6 if drop_attn else (4 if cfg_w else 3))
     w = _W()
     w.u32(0x35325246, ver, 1, K, d, depth, int(m["heads"]), int(m["tokens"]),
           int(m["zch"]), int(m["zhw"]), int(m["patch"]), n_cond,
@@ -193,18 +192,8 @@ def write_model_bin(md, path):
         w.arr(L["b"], np.int32)
         w.arr(L["M"], np.int32)
         w.arr(L["s"], np.uint8)
-    if ver >= 5:  # hires head layers: dense [O][3][3][C], flags as above.
-        # v6-without-hires (attn-dropped, no head) still writes n_hires=0 so the
-        # section is present exactly where graph.c expects it.
-        hlist = hires or []
-        w.u32(len(hlist))
-        for L in hlist:
-            O, _, _, C = L["W"].shape
-            w.u32(C, O, int(L["up"]) | int(L["relu"]) << 1 | int(L["u8"]) << 2)
-            w.arr(L["W"], np.int8)
-            w.arr(L["b"], np.int32)
-            w.arr(L["M"], np.int32)
-            w.arr(L["s"], np.uint8)
+    if ver >= 5:  # trailing hires-head layer count (v5 experiment, removed):
+        w.u32(0)  # always 0; graph.c rejects anything else
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         f.write(bytes(w.buf))
@@ -274,10 +263,6 @@ def write_rf_cfg(md, path):
         f"#define RF_DEC_NZ_MAX {nz_max}",
         f"#define RF_DEC_W_MAX {w_max}",
         f"#define RF_DEC_O_MAX {o_max}",
-        f"#define RF_HIRES {1 if md.get('hires') else 0}",
-        f"#define RF_HIRES_CMID "
-        f"{int(md['hires'][0]['W'].shape[0]) if md.get('hires') else 0}",
-        f"#define RF_OUT_HW {img_hw * 2 if md.get('hires') else img_hw}",
         "#endif",
     ]
     with open(path, "w", newline="\n") as f:

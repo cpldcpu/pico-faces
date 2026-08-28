@@ -29,8 +29,7 @@ typedef struct {
  * with the DiT's qkv/attn buffers (those are idle during rf_decode), so we
  * overlay it there (rf_dec_scratch) rather than spend fresh .bss -- the fat
  * decoders (128ch mid layers -> MAX_ROW_NZ 2048) would otherwise blow the 512KB
- * SRAM by ~2KB. Same phase-exclusive aliasing the hires head uses on
- * rf_dit_noise. The _Static_assert fires (clear compile error, not silent
+ * SRAM by ~2KB. The _Static_assert fires (clear compile error, not silent
  * corruption) if a future decoder's rowbuf ever exceeds that block. */
 extern int8_t *const rf_dec_scratch;
 #define rf_dec_scratch_bytes (RF_TOKENS * 4 * RF_DIM)  /* == sizeof dit_qa */
@@ -113,13 +112,8 @@ static void conv_rows_dense(int y0, int y1, void *p) {
                        c->u8, c->dst, NULL, y0, y1);
 }
 
-/* the final (u8) layer's input = the last 128^2 feature map; the hires head
- * (engine/src/hires.c) taps it from the arena right after rf_generate */
-const int8_t *rf_dec_feat;
-
-/* unpatchify staging (4 KB, decode entry only). Non-static: the hires head
- * reuses it as conv scratch -- phase-exclusive, like the fb/arena alias */
-int16_t rf_dec_zhwc[RF_ZHW * RF_ZHW * RF_ZCH] RF_ALIGN4;
+/* unpatchify staging (4 KB, decode entry only) */
+static int16_t rf_dec_zhwc[RF_ZHW * RF_ZHW * RF_ZCH] RF_ALIGN4;
 
 void rf_decode(const rf_model_t *m, const int16_t z_tok[RF_TOKENS][RF_PD],
                uint8_t *img) {
@@ -145,7 +139,6 @@ void rf_decode(const rf_model_t *m, const int16_t z_tok[RF_TOKENS][RF_PD],
                     (int)(L->flags & 1), (int)((L->flags >> 2) & 1),
                     (int)((L->flags >> 3) & 1), NULL};
         c.dst = c.u8 ? (int8_t *)img : out;
-        if (c.u8) rf_dec_feat = in;
         int Ho = c.up ? 2 * H : H;
         rf_par_for(Ho, c.wt ? conv_rows_sparse : conv_rows_dense, &c);
         if (c.up) {

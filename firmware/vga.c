@@ -29,10 +29,6 @@
 #include "rf_model.h"
 #include "rf_ops.h"
 
-/* On hires builds the screen shows the 128 decode (rf_img) at 384, same as
- * non-hires; the 256 head output is the USB deliverable only (the fb aliases
- * the arena holding the feature map -- see firmware/main.c). */
-
 extern uint8_t rf_img[RF_IMG_HW * RF_IMG_HW * RF_IMG_CH];
 extern volatile uint8_t rf_progress;
 extern volatile uint8_t rf_progress_total;

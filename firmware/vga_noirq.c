@@ -290,11 +290,8 @@ void rf_vga_invalidate(void) {
 }
 
 /* Floyd-Steinberg dither of the 128 decode (rf_img) into the fb, upscaled
- * 3x to 384, then switch the image band back to the fb rows. On hires builds
- * the on-screen image is this 128 decode, NOT the 256 head output: the fb
- * aliases the arena that holds the feature map, so the 256 cannot be
- * dithered in without clobbering what rf_hires reads (see firmware/main.c).
- * The true 256 goes out over USB. rf_img is arena-free and still valid. */
+ * 3x to 384, then switch the image band back to the fb rows. rf_img is
+ * arena-free and still valid here. */
 void rf_vga_dither(void) {
     static int16_t err[2][IMG_W + 2][RF_IMG_CH];
     memset(err, 0, sizeof err);

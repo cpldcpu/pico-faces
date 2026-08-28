@@ -14,7 +14,7 @@ CFGDIR="artifacts/$NAME/export"
 mkdir -p "build/$NAME/e2e"
 gcc -O2 -Wall -Wextra -I"$CFGDIR" -Iengine/include \
     engine/desktop/main_golden.c engine/src/graph.c engine/src/dit.c \
-    engine/src/vae_dec.c engine/src/hires.c engine/src/kernels_ref.c \
+    engine/src/vae_dec.c engine/src/kernels_ref.c \
     engine/src/prng.c -o "build/$NAME/rf_golden"
 # goldens are .gray (1ch) or .rgb (3ch); seed set = whatever fold emitted
 # (3 for plain models, 4 for CFG models: 3 guided + 1 plain-pass)

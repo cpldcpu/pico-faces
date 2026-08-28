@@ -3,8 +3,8 @@
 # flash. Trains on the SHARED latent space (m3_long_cfg's VAE latents) — for
 # a full retrain (path B), train the m3_long_cfg VAE + latents first. The
 # released fp checkpoint from this training is checkpoints/
-# m3_decD_deep_full/dit_fp.pt (500k + 100k cosine cooldown); the shipped
-# device checkpoint is dit_qat.pt (the 45k distillation-QAT on top of it).
+# m3_decD_deep_full/dit_fp.pt (500k steps, the last 100k a cosine cooldown); the shipped
+# device checkpoint is dit_qat.pt (the 60k distillation-QAT on top of it).
 latents: artifacts/m3_long_cfg/runs/vae/latents.npz
 n_val: 2000
 latent_ch: 8

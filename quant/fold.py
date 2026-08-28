@@ -417,37 +417,6 @@ def fold(model_name, ckpt_path, calib_path, out_dir):
     md["dec"] = layers
     md["meta"]["img_ch"] = int(layers[-1]["W"].shape[0])
 
-    # ---- 256 hires head (ESPCN pixel-shuffle on the frozen decoder) --------
-    # Two convs tapping the last body feature map (see train/vae/hires_head.py):
-    # conv+BN+ReLU 8->c_mid, then a linear conv c_mid->12 whose output is a
-    # DELTA in pixel LSB units (127.5/unit, same fold as the u8 layer but no
-    # -0.5/+128: those stay in the base image). The engine depth-to-spaces the
-    # 12 channels 2x2 and saturating-adds onto the NN-x2 upsampled u8 image.
-    # Requires a "head.0" activation range in the calibration.
-    hires_ckpt = exp_cfg.get("hires_ckpt")
-    if hires_ckpt:
-        hk = torch.load(rfpaths.resolve(hires_ckpt), map_location=dev,
-                        weights_only=False)
-        hsd = {k: v.detach().numpy().astype(np.float64)
-               for k, v in hk["head"].items()}
-        s_feat = S(f"dec.{n_body - 1}")
-        hf = hsd["block.1.weight"] / np.sqrt(hsd["block.1.running_var"] + 1e-5)
-        W = hsd["block.0.weight"] * hf[:, None, None, None]
-        b_real = ((hsd["block.0.bias"] - hsd["block.1.running_mean"]) * hf
-                  + hsd["block.1.bias"])
-        Wq_, sw_ = quant_w(W)
-        s_h0 = S("head.0")
-        M_, s_ = to_Ms(s_feat * sw_ / s_h0)
-        hires = [{"W": np.transpose(Wq_, (0, 2, 3, 1)).copy(),
-                  "b": bias_acc(b_real, s_feat, sw_), "M": M_, "s": s_,
-                  "up": 0, "relu": 1, "u8": 0}]
-        Wq_, sw_ = quant_w(hsd["out.weight"])
-        M_, s_ = to_Ms(s_h0 * sw_ * 127.5)
-        hires.append({"W": np.transpose(Wq_, (0, 2, 3, 1)).copy(),
-                      "b": bias_acc(hsd["out.bias"], s_h0, sw_),
-                      "M": M_, "s": s_, "up": 0, "relu": 0, "u8": 0})
-        md["hires"] = hires
-        md["meta"]["hires"] = 1
 
     os.makedirs(rfpaths.resolve(out_dir), exist_ok=True)
     with open(os.path.join(rfpaths.resolve(out_dir), "md.pkl"), "wb") as f:

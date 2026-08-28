@@ -13,7 +13,6 @@ On RP2350, the engine is using CM33 intrinsics to speed up the int8 convs and ma
 | `src/graph.c` | `model.bin` parser + generation orchestration |
 | `src/dit.c` | the DiT step: attention, MLP, int RMSNorm/softmax, per-step folded conditioning, CFG blend |
 | `src/vae_dec.c` | int8 conv decoder |
-| `src/hires.c` | optional 256×256 pixel-shuffle head (not used by the two released models) |
 | `src/kernels_ref.c` | portable reference kernels |
 | `src/prng.c` | PCG32 + CLT-12 Gaussian |
 | `desktop/main_golden.c` | x86 harness: `rf_golden <model.bin> <outdir> <k> <seeds…>` → `.rgb` frames |

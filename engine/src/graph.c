@@ -103,19 +103,11 @@ int rf_model_load(const uint8_t *blob, size_t len, rf_model_t *m) {
         if (m->n_w > RF_W_MAX) return -5;
         for (uint32_t j = 0; j < m->n_w; j++) {
             m->w_q8[j] = u32(&c);
-            if (ver < 8) { /* dead since the int32-diff blend; gone in v8 */
-                for (uint32_t k = 0; k < m->K; k++) {
-                    m->M_v_c[j][k] = take(&c, 4 * pd);
-                    m->s_v_c[j][k] = take(&c, pd);
-                }
-                for (uint32_t k = 0; k < m->K; k++) {
-                    m->M_v_n[j][k] = take(&c, 4 * pd);
-                    m->s_v_n[j][k] = take(&c, pd);
-                }
-            } else {
-                for (uint32_t k = 0; k < m->K; k++) {
-                    m->M_v_c[j][k] = m->M_v_n[j][k] = NULL;
-                    m->s_v_c[j][k] = m->s_v_n[j][k] = NULL;
+            if (ver < 8) { /* per-pass M_v_c/M_v_n tables: unused since the
+                            * int32-difference blend, skipped; gone in v8 */
+                for (uint32_t k = 0; k < 2 * m->K; k++) {
+                    take(&c, 4 * pd);
+                    take(&c, pd);
                 }
             }
         }
@@ -191,11 +183,8 @@ int rf_model_load(const uint8_t *blob, size_t len, rf_model_t *m) {
     m->n_dec = u32(&c);
     if (m->n_dec > RF_MAX_DEC) return -3;
     for (uint32_t i = 0; i < m->n_dec; i++) declayer(&c, &m->dec[i]);
-    m->n_hires = 0;
-    if (ver >= 5) { /* ESPCN hires head */
-        m->n_hires = u32(&c);
-        if (m->n_hires > RF_MAX_HIRES) return -6;
-        for (uint32_t i = 0; i < m->n_hires; i++) declayer(&c, &m->hires[i]);
-    }
+    /* v5+ carries a trailing hires-head layer count (an experimental 256
+     * ESPCN head, since removed); it is always 0 in shipped blobs. */
+    if (ver >= 5 && u32(&c) != 0) return -6;
     return c.err ? -4 : 0;
 }

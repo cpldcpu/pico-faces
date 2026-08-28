@@ -27,27 +27,6 @@ uint8_t rf_img[RF_IMG_HW * RF_IMG_HW * RF_IMG_CH];
 static void put_u32(uint32_t v) { fwrite(&v, 4, 1, stdout); }
 static void put_u16(uint16_t v) { fwrite(&v, 2, 1, stdout); }
 
-#if RF_HIRES
-/* USB sink: stream each 256 row and accumulate its CRC. Does NOT touch the
- * arena, so the decoder feature map rf_hires reads stays intact for the whole
- * pass. The 256 image never exists in memory, so gen_ms includes the USB
- * transfer of the pixel payload.
- *
- * The VGA screen does NOT show the 256: the 384x384 framebuffer aliases BOTH
- * arenas, so dithering the 256 into it would overwrite the feature map that
- * rf_hires is still reading (in any pass -- read and write share arena[1]),
- * and there is no arena-free 131 KB to stage the 256 pixels. So on hires VGA
- * builds the screen shows the 128 decode upscaled 3x (rf_img, arena-free,
- * via the standard rf_vga_dither); the true 256 is the USB deliverable. */
-static uint32_t tx_crc;
-static void hires_usb_sink(int y, const uint8_t *row, void *user) {
-    (void)y;
-    (void)user;
-    fwrite(row, 1, (size_t)RF_OUT_HW * RF_IMG_CH, stdout);
-    tx_crc = rf_crc32_acc(tx_crc, row, (size_t)RF_OUT_HW * RF_IMG_CH);
-}
-#endif
-
 /* raise the flash clock divider before overclocking; must run from SRAM
  * because it changes XIP timing underneath any flash-resident caller */
 static void __no_inline_not_in_flash_func(qmi_set_clkdiv)(uint32_t div) {
@@ -129,30 +108,6 @@ int main(void) {
 #endif
             absolute_time_t t0 = get_absolute_time();
             rf_generate(&model, seed, k_steps, cond, w_idx, rf_img, NULL);
-#if RF_HIRES
-            /* header first, then the head pass streams 256 rows straight into
-             * the reply. The USB sink never writes the arena, so the decoder
-             * feature map rf_hires reads survives the whole pass. */
-            fwrite("RFI2", 1, 4, stdout);
-            put_u32((uint32_t)seed);
-            put_u16(RF_OUT_HW);
-            put_u16(RF_OUT_HW);
-            put_u16(RF_IMG_CH);
-            put_u16((uint16_t)cond);
-            tx_crc = RF_CRC32_INIT;
-            rf_hires(&model, rf_img, hires_usb_sink, NULL);
-            uint32_t ms = (uint32_t)(absolute_time_diff_us(t0, get_absolute_time()) / 1000);
-#if RF_VGA
-            /* screen shows the 128 decode at 384 (rf_img is arena-free and
-             * still valid); the 256 cannot be dithered into the arena-aliased
-             * framebuffer without clobbering the feature map. */
-            rf_vga_dither();
-#endif
-            gpio_put(PICO_DEFAULT_LED_PIN, 0);
-            put_u32(tx_crc ^ RF_CRC32_INIT);
-            put_u32(ms);
-            fflush(stdout);
-#else
             uint32_t ms = (uint32_t)(absolute_time_diff_us(t0, get_absolute_time()) / 1000);
 #if RF_VGA
             rf_vga_dither();
@@ -168,7 +123,6 @@ int main(void) {
             put_u32(rf_crc32(rf_img, sizeof rf_img));
             put_u32(ms);
             fflush(stdout);
-#endif
         } else if (line[0] == 'I') { /* info */
             printf("pico-faces K=%u dim=%u depth=%u cond=%u ch=%u blob=%u sys=%dkHz\n",
                    model.K, model.dim, model.depth, model.n_cond, model.img_ch,

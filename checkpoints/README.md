@@ -21,7 +21,7 @@ The released, git-tracked artifacts of both models. Deployment scripts: `scripts
 - **`m3_decD_deep_full/`** (2026-07-17): `dit_qat.pt` = 60k self-distillation
   QAT (15k flat-LR + 45k cosine, teacher = `dit_fp.pt`, 50% trajectory-pool
   batches; recipe in the model's export.yaml). `dit_fp.pt` = the base fp
-  teacher (500k + 100k cosine cooldown) — kept so the QAT stage is
+  teacher (500k steps, last 100k cosine cooldown) — kept so the QAT stage is
   reproducible without a retrain. Device gen-FID 53.8 (N=5000, K=8 w=4).
   Golden CRC `40c5e5a0` (seed 1: K=4, class 1, w=4). Folded adaLN step
   tables inside `model.bin`: **960 KiB** of 3.83 MiB (5 cond × 8 steps ×

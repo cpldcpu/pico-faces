@@ -70,9 +70,6 @@ def main():
     ap.add_argument("--union", default=None,
                     help="existing calib .npz to take the per-key max with "
                          "(e.g. the frozen QAT base calib)")
-    ap.add_argument("--hires-ckpt", default=None,
-                    help="hires head checkpoint (default: export.yaml "
-                         "hires_ckpt); adds the head.0 activation tap")
     args = ap.parse_args()
 
     dev = "cuda"
@@ -125,17 +122,6 @@ def main():
     for i, layer in enumerate(vae_decoder.body):
         post(layer, f"dec.{i}")
 
-    head = None
-    hires_ckpt = args.hires_ckpt or exp.get("hires_ckpt")
-    if hires_ckpt:
-        from train.vae.hires_head import HiresHead, trunk
-        hk = torch.load(rfpaths.resolve(hires_ckpt), map_location=dev,
-                        weights_only=False)
-        vcfg = rfpaths.cfg(args.model, "vae")
-        head = HiresHead(c_in=vcfg["dec_plan"][-1][0],
-                         c_mid=hk["c_mid"]).to(dev).eval()
-        head.load_state_dict(hk["head"])
-        post(head.block, "head.0")
 
     sched = exp["schedule"]
     ts = list(sched) + [0.0]
@@ -162,18 +148,14 @@ def main():
             col.tap("z")(zt)
             col.tap("z_dec_in")(zt)
             zr = zt * lat_std[None, :, None, None] + lat_mean[None, :, None, None]
-            if head is not None:
-                feat, out128 = trunk(vae_decoder, zr)
-                head(feat, out128)  # dec.i hooks fire via trunk; adds head.0
-            else:
-                vae_decoder(zr)
+            vae_decoder(zr)
 
     for h in hooks:
         h.remove()
     res = col.result()
     if args.union:
         base = dict(np.load(rfpaths.resolve(args.union)).items())
-        # base may lack keys new to this run (e.g. head.0); never vice versa
+        # base may lack keys new to this run; never vice versa
         missing = set(base) - set(res)
         assert not missing, f"union base has keys this run lacks: {missing}"
         res = {k: np.maximum(res[k], base[k]) if k in base else res[k]

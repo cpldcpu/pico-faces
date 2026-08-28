@@ -16,7 +16,7 @@ Paths in the yamls are repo-root-relative. Released inputs point into
 ## The two models
 
 - **`m3_decD_deep_full`** — the quality flagship: depth-12 DiT + decoder D
-  on blob v8, shipped as a 45k distillation-QAT checkpoint folded with its
+  on blob v8, shipped as a 60k distillation-QAT checkpoint folded with its
   frozen calibration. The export.yaml header documents the full recipe and
   why full attention is required (the slim variant's block-10 attention drop
   structurally damages plain-mode generation).

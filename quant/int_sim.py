@@ -181,36 +181,13 @@ class IntSim:
         md = self.md
         z = self.unpatchify(z_tok)
         h = requant_i16_to_i8(z, md["M_zdec"], md["s_zdec"])
-        feat = None
         for i, L in enumerate(md["dec"]):
             last = i == len(md["dec"]) - 1
-            if last:
-                feat = h  # 128^2 x 8 feature map: the hires head's tap
             h = conv3x3_i8(h, L["W"], L["b"], L["M"], L["s"],
                            relu=not last, upsample_in=bool(L["up"]),
                            out_u8=last)
-        if "hires" not in md:
-            return h  # [H,W,img_ch] uint8
-        return self.decode_hires(feat, h)
+        return h  # [H,W,img_ch] uint8
 
-    def decode_hires(self, feat, img128):
-        """ESPCN head (hires models): conv+ReLU then a linear conv whose i8
-        output is a delta in pixel LSB units [H,W,12]; depth-to-space 2x2
-        over the u8 base: out[2y+i, 2x+j, c] = clip(img128[y,x,c] +
-        delta[y,x, c*4 + i*2 + j], 0, 255)."""
-        H0, H1 = self.md["hires"]
-        h = conv3x3_i8(feat, H0["W"], H0["b"], H0["M"], H0["s"], relu=True)
-        d = conv3x3_i8(h, H1["W"], H1["b"], H1["M"], H1["s"], relu=False)
-        hh, ww, ch = img128.shape
-        base = img128.astype(np.int16)
-        out = np.empty((2 * hh, 2 * ww, ch), np.uint8)
-        for c in range(ch):
-            for i in range(2):
-                for j in range(2):
-                    dd = d[:, :, c * 4 + i * 2 + j].astype(np.int16)
-                    out[i::2, j::2, c] = np.clip(
-                        base[:, :, c] + dd, 0, 255).astype(np.uint8)
-        return out
 
     def generate(self, seed, k_steps=None, cond=0, w_idx=-1):
         """seed -> (uint8 image [H,W,img_ch], z trajectory taps for debugging).

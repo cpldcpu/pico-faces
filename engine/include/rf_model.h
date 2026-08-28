@@ -11,16 +11,8 @@
  * (a quoted include would always find the sibling default first). */
 #include <rf_cfg.h>
 
-/* rf_cfg.h files generated before the 256 head existed lack these */
-#ifndef RF_HIRES
-#define RF_HIRES 0
-#define RF_HIRES_CMID 0
-#define RF_OUT_HW RF_IMG_HW
-#endif
-
 #define RF_MAGIC 0x35325246u /* 'RF25' */
 #define RF_W_MAX 4 /* max classifier-free-guidance table sets (format v4) */
-#define RF_MAX_HIRES 2 /* hires head layers (format v5): conv+ReLU, delta conv */
 
 typedef struct {
     const int16_t *G1, *B1, *G2, *B2;
@@ -78,14 +70,11 @@ typedef struct {
     const int16_t *Gf[RF_COND][RF_K_MAX], *Bf[RF_COND][RF_K_MAX];
     const int32_t *M_v[RF_K_MAX]; /* folded -dt: class-independent */
     const uint8_t *s_v[RF_K_MAX];
-    /* classifier-free guidance (v4): per w, per-pass rescaled Euler folds.
-     * cond pass: w*-dt; null pass: (1-w)*-dt. n_w = 0 on v3 models. */
+    /* classifier-free guidance (v4): guided steps blend the two passes as an
+     * int32 difference scaled by w_q8 (dit.c); the per-pass M_v_c/M_v_n
+     * tables of v4..v7 blobs are skipped by the loader. n_w = 0 on v3. */
     uint32_t n_w;
-    uint32_t w_q8[RF_W_MAX]; /* w * 256, protocol/display only */
-    const int32_t *M_v_c[RF_W_MAX][RF_K_MAX];
-    const uint8_t *s_v_c[RF_W_MAX][RF_K_MAX];
-    const int32_t *M_v_n[RF_W_MAX][RF_K_MAX];
-    const uint8_t *s_v_n[RF_W_MAX][RF_K_MAX];
+    uint32_t w_q8[RF_W_MAX]; /* w * 256: blend weight, also protocol/display */
     const int8_t *W_emb;
     const int32_t *b_emb, *M_emb;
     const uint8_t *s_emb;
@@ -96,11 +85,6 @@ typedef struct {
     uint8_t s_zdec;
     uint32_t n_dec;
     rf_declayer_t dec[RF_MAX_DEC];
-    /* v5: ESPCN hires head (0 or 2 layers). hires[0] = conv+ReLU tap of the
-     * last decoder feature map, hires[1] = linear conv whose i8 output is a
-     * pixel-unit delta, depth-to-spaced 2x2 onto the NN-x2 upsampled image. */
-    uint32_t n_hires;
-    rf_declayer_t hires[RF_MAX_HIRES];
 } rf_model_t;
 
 /* returns 0 on success */
@@ -119,16 +103,5 @@ int rf_model_load(const uint8_t *blob, size_t len, rf_model_t *m);
  * taps: optional (k_steps+1) x tokens x pd int16 z-state buffer. */
 void rf_generate(const rf_model_t *m, uint64_t seed, int k_steps, int cond,
                  int w_idx, uint8_t *img, int16_t *taps);
-
-#if RF_HIRES
-/* hires models (n_hires == 2): stream the 256 output. Must run immediately
- * after rf_generate — the head taps the decoder's last feature map, which is
- * still resident in the arena rf_decode ping-ponged it into. The sink
- * receives every output row y (0..RF_OUT_HW-1) in order, RF_OUT_HW *
- * RF_IMG_CH bytes each. The full 256 image never exists in memory. */
-void rf_hires(const rf_model_t *m, const uint8_t *img128,
-              void (*sink)(int y, const uint8_t *row, void *user),
-              void *user);
-#endif
 
 #endif

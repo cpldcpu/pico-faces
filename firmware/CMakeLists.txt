@@ -35,7 +35,6 @@ add_executable(pico_faces
     ../engine/src/graph.c
     ../engine/src/dit.c
     ../engine/src/vae_dec.c
-    ../engine/src/hires.c
     ../engine/src/kernels_ref.c
     ../engine/src/prng.c
 )
