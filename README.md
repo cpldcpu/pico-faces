@@ -2,15 +2,11 @@
 
 This project implements a **Gen AI image generator running on a $1 Microcontroller**, the RP2350, as used in the Raspberry Pi Pico 2. 
 
-**Article with more details [here](https://cpldcpu.github.io/2026/08/28/ai-image-generation-on-a-rp-pico-2-microcontroller/)**
-
----
-
-## What does it do?
-
-It can generate 128×128 RGB images of human faces in 10-20s each and display them on a VGA monitor or stream them over USB. The model implements a latent rectified-flow diffusion transformer (DiT), similar to what is used in diffusion models like Flux. There are two variants at 2.9 and 1.7 million parameters, 5000x times less than even a typical local diffusion model. It supports conditional generation in 5 classes (gender × smile + neutral). The model was trained on the [FFHQ dataset](https://github.com/nvlabs/ffhq-dataset).
+It can generate 128×128 RGB images of human faces in 5-20s each and display them on a VGA monitor or stream them over USB. The model implements a latent flow diffusion transformer (DiT), similar to what is used in models like Flux. There are two variants at 2.9 and 1.7 million parameters, 5000x times less than even a typical local diffusion model. It supports conditional generation in 5 classes (gender × smile + neutral). 
 
 It is more than astonishing that a model this small is able to generate complex images at all. Many MNIST toy diffusion projects use far more parameters and are barely able to generate anything coherent. Interestingly, a lot of the optimizations that helped large models were also necessary for this micro model. 
+
+**Article with more details [here](https://cpldcpu.github.io/2026/08/28/ai-image-generation-on-a-rp-pico-2-microcontroller/)**
 
 ### Example outputs for the same seed and different classes
 
