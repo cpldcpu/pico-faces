@@ -20,8 +20,39 @@
 extern const uint8_t rf_model_blob[];
 extern const uint8_t rf_model_blob_end[];
 
+#ifndef RF_LED_INVERTED
+#if defined(ADAFRUIT_FRUIT_JAM)
+#define RF_LED_INVERTED 1
+#else
+#define RF_LED_INVERTED PICO_DEFAULT_LED_PIN_INVERTED
+#endif
+#endif
+#if RF_LED_INVERTED
+#define RF_LED_ON 0
+#define RF_LED_OFF 1
+#else
+#define RF_LED_ON 1
+#define RF_LED_OFF 0
+#endif
+
+/* Either scanout provides the same four-function contract (rf_vga_init,
+ * rf_vga_invalidate, rf_vga_dither, rf_step_hook), so the call sites below
+ * only care whether one is linked at all. */
+#define RF_VIDEO (RF_VGA + RF_DVI)
+
+#define RF_HSTX_KHZ 150000
+#if RF_DVI
+#if (RF_SYS_KHZ) % (RF_HSTX_KHZ) != 0 || \
+    (RF_SYS_KHZ) / (RF_HSTX_KHZ) < 1 || (RF_SYS_KHZ) / (RF_HSTX_KHZ) > 3
+#error "RF_DVI needs clk_hstx=150MHz: RF_SYS_KHZ must be 1..3 x 150000"
+#endif
+#if RF_VGA
+#error "RF_DVI and RF_VGA are two scanouts for one framebuffer; pick one"
+#endif
+#endif
+
 static rf_model_t model;
-/* non-static: the VGA renderer reads it live */
+/* non-static: the display backend reads it live */
 uint8_t rf_img[RF_IMG_HW * RF_IMG_HW * RF_IMG_CH];
 
 static void put_u32(uint32_t v) { fwrite(&v, 4, 1, stdout); }
@@ -44,14 +75,26 @@ int main(void) {
     qmi_set_clkdiv(4);
     set_sys_clock_khz(RF_SYS_KHZ, true);
 #endif
+#if RF_DVI
+    /* Must come after set_sys_clock_khz(): the SDK's runtime init leaves
+     * clk_hstx glued undivided to clk_sys, and retuning clk_sys neither
+     * re-divides it nor updates its recorded frequency. Take the actual
+     * clk_sys rather than RF_SYS_KHZ. */
+    clock_configure(clk_hstx, 0, CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLK_SYS,
+                    clock_get_hz(clk_sys), RF_HSTX_KHZ * 1000u);
+#endif
     stdio_init_all();
     stdio_set_translate_crlf(&stdio_usb, false);
 
     extern void rf_par_init(void);
     rf_par_init();
-#if RF_VGA
-    /* scanvideo claims FIXED DMA channels (0..); init it before the
-     * staging channels are allocated from the unused pool */
+#if RF_VIDEO
+    /* Historically this had to come first: scanvideo claims FIXED DMA
+     * channels (0..), so the display had to be up before the staging
+     * channels were taken from the unused pool. dvi_hstx.c has no such
+     * constraint - it claims whatever is free - but the ordering is kept so
+     * the scanout is alive (and showing the boot pattern) before anything
+     * slower runs. */
     extern void rf_vga_init(void);
     rf_vga_init();
 #endif
@@ -62,6 +105,8 @@ int main(void) {
 
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+    /* an output defaults to 0, which on an inverted LED is "lit" - park it */
+    gpio_put(PICO_DEFAULT_LED_PIN, RF_LED_OFF);
 
     int rc = rf_model_load(rf_model_blob,
                            (size_t)(rf_model_blob_end - rf_model_blob), &model);
@@ -100,8 +145,8 @@ int main(void) {
             } else if (e3 == e2 && model.n_w) {
                 w_idx = (int)(seed % (model.n_w + 1)) - 1;
             }
-            gpio_put(PICO_DEFAULT_LED_PIN, 1);
-#if RF_VGA
+            gpio_put(PICO_DEFAULT_LED_PIN, RF_LED_ON);
+#if RF_VIDEO
             /* framebuffer aliases rf_arena; engine is about to reuse it */
             extern void rf_vga_invalidate(void), rf_vga_dither(void);
             rf_vga_invalidate();
@@ -109,10 +154,10 @@ int main(void) {
             absolute_time_t t0 = get_absolute_time();
             rf_generate(&model, seed, k_steps, cond, w_idx, rf_img, NULL);
             uint32_t ms = (uint32_t)(absolute_time_diff_us(t0, get_absolute_time()) / 1000);
-#if RF_VGA
+#if RF_VIDEO
             rf_vga_dither();
 #endif
-            gpio_put(PICO_DEFAULT_LED_PIN, 0);
+            gpio_put(PICO_DEFAULT_LED_PIN, RF_LED_OFF);
             fwrite("RFI2", 1, 4, stdout);
             put_u32((uint32_t)seed);
             put_u16(RF_IMG_HW);
@@ -123,10 +168,29 @@ int main(void) {
             put_u32(rf_crc32(rf_img, sizeof rf_img));
             put_u32(ms);
             fflush(stdout);
+#if RF_DVI && RF_VGA_TEST
+        } else if (line[0] == 'P') { /* boot test pattern 0..2 */
+            extern void rf_dvi_test_pattern(int pat);
+            int pat = (int)strtol(line + 1, NULL, 0);
+            rf_dvi_test_pattern(pat);
+            printf("OK pattern %d\n", pat);
+#endif
+#if RF_DVI
+        } else if (line[0] == 'V') { /* scanout health / restart */
+            extern int rf_dvi_bringup_tries, rf_dvi_restart(void);
+            extern uint32_t rf_dvi_frame_rate_mhz(uint32_t ms);
+            if (line[1] == 'R') rf_dvi_restart();
+            printf("dvi bringup=%d refresh=%umHz\n", rf_dvi_bringup_tries,
+                   (unsigned)rf_dvi_frame_rate_mhz(500));
+#endif
         } else if (line[0] == 'I') { /* info */
-            printf("pico-faces K=%u dim=%u depth=%u cond=%u ch=%u blob=%u sys=%dkHz\n",
+            printf("pico-faces K=%u dim=%u depth=%u cond=%u ch=%u blob=%u "
+                   "sys=%ukHz hstx=%ukHz meas=%ukHz\n",
                    model.K, model.dim, model.depth, model.n_cond, model.img_ch,
-                   (unsigned)(rf_model_blob_end - rf_model_blob), RF_SYS_KHZ);
+                   (unsigned)(rf_model_blob_end - rf_model_blob),
+                   (unsigned)(clock_get_hz(clk_sys) / 1000u),
+                   (unsigned)(clock_get_hz(clk_hstx) / 1000u),
+                   (unsigned)frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_HSTX));
         }
     }
 }

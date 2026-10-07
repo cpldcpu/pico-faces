@@ -3,18 +3,38 @@ cmake_minimum_required(VERSION 3.13)
 set(PICO_BOARD pico2 CACHE STRING "")
 set(PICO_PLATFORM rp2350-arm-s CACHE STRING "")
 
-include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
-include($ENV{PICO_EXTRAS_PATH}/external/pico_extras_import.cmake)
-
-project(pico_faces C CXX ASM)
-pico_sdk_init()
-
 # RF_VGA=2 (default): interrupt-free scanout (vga_noirq.c) - static DMA
 # rings feeding scanvideo's PIO programs; zero display IRQs/CPU.
 # RF_VGA=1: the original scanvideo path (IRQ-driven, kept as fallback).
+# RF_VGA=0: headless (USB-CDC only), no display, no pico-extras needed.
 if(NOT DEFINED RF_VGA)
     set(RF_VGA 2)
 endif()
+
+# RF_DVI=1: DVI over HSTX (firmware/dvi_hstx.c), for the Adafruit Fruit Jam
+# Needs -DPICO_BOARD=adafruit_fruit_jam
+if(NOT DEFINED RF_DVI)
+    set(RF_DVI 0)
+endif()
+if(RF_DVI AND RF_VGA)
+    message(FATAL_ERROR
+        "RF_DVI=1 and RF_VGA=${RF_VGA} are mutually exclusive: they are two "
+        "scanouts for one framebuffer. Pass -DRF_VGA=0 with -DRF_DVI=1.")
+endif()
+if(RF_DVI AND NOT PICO_BOARD STREQUAL "adafruit_fruit_jam")
+    message(FATAL_ERROR
+        "RF_DVI=1 needs -DPICO_BOARD=adafruit_fruit_jam (got '${PICO_BOARD}')")
+endif()
+
+include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
+# pico-extras only supplies the VGA/scanvideo path; headless or, DVI/HSTX
+# build doesn't require it
+if(RF_VGA)
+    include($ENV{PICO_EXTRAS_PATH}/external/pico_extras_import.cmake)
+endif()
+
+project(pico_faces C CXX ASM)
+pico_sdk_init()
 
 # model blob baked into flash (.rodata); override with -DMODEL_BIN=...
 if(NOT MODEL_BIN)
@@ -56,8 +76,18 @@ set_source_files_properties(model_blob.S PROPERTIES
 if(NOT RF_SYS_KHZ)
     set(RF_SYS_KHZ 300000)
 endif()
+if(RF_DVI)
+    math(EXPR rf_hstx_div "${RF_SYS_KHZ} / 150000")
+    math(EXPR rf_hstx_rem "${RF_SYS_KHZ} % 150000")
+    if(rf_hstx_rem OR rf_hstx_div LESS 1 OR rf_hstx_div GREATER 3)
+        message(FATAL_ERROR
+            "RF_DVI needs clk_hstx = 150 MHz (30 MHz pixel clock), but "
+            "RF_SYS_KHZ=${RF_SYS_KHZ} is not 1, 2 or 3 x that. Use 300000 "
+            "(the default, div 2) or 150000 (div 1).")
+    endif()
+endif()
 target_compile_definitions(pico_faces PRIVATE
-    RF_SYS_KHZ=${RF_SYS_KHZ} RF_HOT_IN_RAM=1)
+    RF_SYS_KHZ=${RF_SYS_KHZ} RF_DVI=${RF_DVI} RF_HOT_IN_RAM=1)
 
 target_link_libraries(pico_faces pico_stdlib pico_multicore hardware_vreg
     hardware_clocks)
@@ -83,6 +113,14 @@ if(RF_VGA EQUAL 2)
         ${PICO_EXTRAS_PATH}/src/rp2_common/pico_scanvideo_dpi/include)
     target_link_libraries(pico_faces hardware_pio hardware_dma)
     target_compile_definitions(pico_faces PRIVATE RF_VGA=2)
+    if(RF_VGA_TEST) # boot test pattern through the fb path (debug aid)
+        target_compile_definitions(pico_faces PRIVATE RF_VGA_TEST=1)
+    endif()
+elseif(RF_DVI)
+    # DVI over HSTX. the TMDS encoding is in hardware and the
+    # whole frame is a static DMA command list.
+    target_sources(pico_faces PRIVATE dvi_hstx.c)
+    target_link_libraries(pico_faces hardware_dma)
     if(RF_VGA_TEST) # boot test pattern through the fb path (debug aid)
         target_compile_definitions(pico_faces PRIVATE RF_VGA_TEST=1)
     endif()
